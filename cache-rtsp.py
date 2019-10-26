@@ -28,10 +28,10 @@ class Cache_frame(object):
 
         def running_av():
             nonlocal last, event 
-            video = av.open(self.address, mode = 'r', options = {'rtsp_transport':'tcp'})
-            # video.streams.framerate = Fraction(25)
-            video.streams.video[0].thread_type = 'AUTO' #多线程解码
-            for frame in video.decode(video=0):
+            container = av.open(self.address, mode = 'r', options = {'rtsp_transport':'tcp'})
+            # container.streams.framerate = Fraction(25)
+            container.streams.video[0].thread_type = 'AUTO' #多线程解码
+            for frame in container.decode(video=0):
 
                 new_fream = frame.to_ndarray(format='bgr24')
                 time.sleep(0.035) # i should make a function to control it
