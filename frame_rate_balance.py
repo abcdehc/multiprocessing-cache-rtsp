@@ -20,7 +20,6 @@ class Cache_frame(object):
         self.buffer = []
         self.polynomial = None
         self.speed = 25
-
         self.speed_addition = 1
         self.address = address 
         self.encoding_tool = "pyav"
@@ -38,7 +37,7 @@ class Cache_frame(object):
             nonlocal buffer, last, t2, event1
             container = av.open(self.address, mode = 'r', options = {'rtsp_transport':'tcp'})
             container.streams.video[0].thread_type = 'AUTO' #多线程解码
-            self.speed = container.streams.video[0].average_rate
+            self.speed = int(container.streams.video[0].average_rate)
             while True:
                 for frame in container.decode(video=0):
                     if t2.is_alive():
@@ -64,32 +63,33 @@ class Cache_frame(object):
             y = np.array([-2*self.speed, 0, self.speed, self.speed+self.speed_addition, self.speed, 0, -2*self.speed])
             z = np.polyfit(x, y, 6)
             self.polynomial = np.poly1d(z.astype(np.float32))
+            print(self.polynomial(self.top))
             
         def sleep_time(long):   # 调用控制播放速度的函数获得到下一帧的间隔时间
             return 1/self.polynomial(long)
 
-            # a = self.polynomial(long)     # 如果想观察缓存区图片数量与播放速度的关系，请启用这四行
+            # a = self.polynomial(long)     # 如果想观察缓存区图片数量与播放速度的关系，请启用此部分替代lambda
             # b = 1/a
             # print("buffer length:", long, "play speed:", a)
             # return b
 
         def cache_last():
             nonlocal buffer, last, event1
-
-            pts_speed_func()
+            pts_speed_func()        # 初始化速率函数
             while True:
                 if len(buffer) > self.top/2:
+                    print("start show")
                     while True:
                         try:
                             last = buffer.pop(0)
                             event1.set()
                             if len(buffer) > self.top:
                                 del buffer[0:-self.top+1]
-
                                 self.speed_addition = self.speed_addition + 1
+                                print("auto speed_addition:",self.speed_addition)
                                 pts_speed_func()    # 当缓冲区不足以存放所有图片时，说明函数对应的最高速率不正确，所以增加速率最大值后重置速率函数
-                            
-                            time.sleep(sleep_time(len(buffer)))
+                            # time.sleep(sleep_time(len(buffer)))
+                            time.sleep((lambda x:1/self.polynomial(x))(len(buffer)))
                         except:
                             continue
                 time.sleep(1)
@@ -112,31 +112,26 @@ class Cache_frame(object):
             event1.clear()
 
     def read(self) -> None: 
-
-        return self.q.get() 
+        return self.q.get()
 
     def run(self):
         pw = multiprocessing.Process(target=self.write)
         pw.start()
 
-
+# 使用方法示例
 if __name__ == '__main__':
-    ca = Cache_frame("http://ivi.bupt.edu.cn/hls/cctv1hd.m3u8")
+    c = Cache_frame("http://ivi.bupt.edu.cn/hls/cctv1hd.m3u8")
     # ca.encoding_tool = "opencv"
-
     # self.speed_addition = 25
     # ca.use_buffer = False
-    ca.address = "rtsp://sd:admin12345@27.154.228.158:554/h264/ch41/main/av_stream"  # 海康摄像机地址格式
-
-    t2=threading.Thread(target=ca.run)
-    t2.start()
+    # ca.address = "rtsp://admin:admin@192.168.1.110:554/h264/ch41/main/av_stream"  # 海康摄像机地址格式
+    t3=threading.Thread(target=c.run)
+    t3.start()
 
     while True:
-        img = ca.read()
-        
+        img = c.read()
         # img = transform.resize(img, (270, 480))
         img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5) 
-
         key = cv2.waitKey(1) & 0xFF
         cv2.imshow("video", img)
         if key == ord('q'):
